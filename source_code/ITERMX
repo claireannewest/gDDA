@@ -1,0 +1,38 @@
+cgcommon.f90:      USE DDCOMMON_9,ONLY : ERRSCAL,IDVOUT2,ITERMX,ITERN
+cgcommon.f90:!      INTEGER :: IDVOUT2, ITERMX, ITERN
+cgcommon.f90:!      COMMON /NORMERR/ERRSCAL, IDVOUT2, ITERMX, ITERN
+cgcommon.f90:! 03.04.13 (BTD): added ITERMX and ITERN to COMMON/NORMERR/
+cgcommon.f90:      ITERN=ITERN+1
+cgcommon.f90:      IF(ITERN<=2)THEN
+cgcommon.f90:         ITNOL=ITERN
+cgcommon.f90:         WRITE (IDVOUT2,FMT=9000) ITERN, NORMERR
+cgcommon.f90:            RATE=LOG(ERRMIN/NORMERR)/(ITERN-ITNOL)
+cgcommon.f90:            ITNOL=ITERN
+cgcommon.f90:            WRITE(IDVOUT2,FMT=9001)ITERN,NORMERR,ERRMIN,RATE
+cgcommon.f90:            WRITE(IDVOUT2,FMT=9000)ITERN,NORMERR
+ddcommon.f90:      INTEGER :: IDVOUT2,ITERMX,ITERN
+Binary file ddscat matches
+getfml.f90:      USE DDCOMMON_9,ONLY: ERRSCAL,IDVOUT2,ITERMX,ITERN
+getfml.f90:!                 added veriables ITERN and ITERMX
+getfml.f90:!                 Reset ITERN=0 for option PETRKP
+getfml.f90:               ITERN=0
+getfml.f90:               ITERN=0
+getfml.f90:                           NAT3,NAT3,NLAR,TOLR,ITERN,MULTIPLICATIONS)
+getfml.f90:               ITERN=ITERN+1
+getfml.f90:!          PRINT*, ' MULTIPLICATIONS ', MULTIPLICATIONS, TOL, TOLR, ITERN
+getfml.f90:                             CXSC,MXITER,ITERN,TOL,TOLR,MULTIPLICATIONS)
+getfml.f90:               ITERN=0
+getfml.f90:                     IF(ITERN>=MXITER)THEN
+getfml.f90:                        WRITE(CMSGNM,FMT='(A,I6,A,I6)')'ITERN=',ITERN, &
+getfml.f90:! ITERN is obtained from DDCOMMON_9
+getfml.f90:            ITNUM(JO)=ITERN
+Binary file getfml.o matches
+zbcg2wp.f90:      USE DDCOMMON_9,ONLY: ITERMX,ITERN
+zbcg2wp.f90:! 08.07.16 (BTD) Added DDCOMMON_9 to communicate ITERMX and ITERN
+zbcg2wp.f90:!                error message when ITERN=ITERMX/4)
+zbcg2wp.f90:      ITERN=0
+zbcg2wp.f90:      DO WHILE (RNRM>TOLER*RNRM0 .AND. ITERN<=ITERMX)
+zbcg2wp.f90:         ITERN=ITERN+1
+zbcg2wp.f90:         IF(ITERN>ITERMX)CALL ERRMSG('FATAL','ZBCG2WP',' ITERN>ITERMX')
+zbcg2wp.f90:                 'IT=',ITERN,' f.err=',RNRM/RNRM0
+Binary file zbcg2wp.o matches

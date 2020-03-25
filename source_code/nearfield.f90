@@ -1,0 +1,483 @@
+  SUBROUTINE NEARFIELD(CSTAMP,VERSNUM,NRWORD,CMDFFT,CFLE1,CFLE2, &
+                       CFLEB1,CFLEB2,MYID,AKD,AK_TF,IOCC, IXYZ0,&
+                       ICOMP,MXCOMP,MXPBC,NAT0,NCOMP,NX,NY,NZ,   &
+                       IPBC,IORTH,NRFLDB,GAMMA,NAMBIENT,PYD,PZD, &
+                       DX,X0,AEFF,WAVE,CXADIA,CXEPS,CXPOL1,      &
+                       CXPOL2,CXE01_TF,CXE02_TF,CXBSCA1,         &
+                       CXBSCA2,CXESCA1,CXESCA2,CXZC,CXZW)        !
+
+!-------------------------------- v8 -------------------------------
+  USE DDPRECISION,ONLY: WP
+  IMPLICIT NONE
+
+! Arguments:
+
+  CHARACTER :: CMDFFT*6,CFLE1*15,CFLE2*15,CFLEB1*16,CFLEB2*16,CSTAMP*26
+
+  INTEGER :: IORTH,IPBC,JPBC,MXCOMP,MXPBC,MYID, &
+             NAT0,NCOMP,NRFLDB,NRWORD,NX,NY,NZ,VERSNUM
+
+  INTEGER :: MXITER
+  INTEGER :: & 
+     ITNUM(2)
+
+  INTEGER*2 ::          &
+     ICOMP(3*NX*NY*NZ), &
+     IOCC(NX*NY*NZ)
+
+  integer,intent(in),dimension(1:nat0,3) :: ixyz0
+
+  REAL(WP) :: AEFF,AK3,AKD,ETASCA,GAMMA,NAMBIENT,PIA2,PYD,PZD,TOL,TOLR,WAVE
+
+  REAL(WP) ::  &
+     AK_TF(3), &
+     DX(3),    &
+     X0(3)
+
+  COMPLEX(WP) :: CXI,CXFAC
+  COMPLEX(WP) ::                &
+     CXADIA(1:3*NX*NY*NZ),      &
+     CXE01_TF(1:3),             &
+     CXE02_TF(1:3),             &
+     CXEPS(1:MXCOMP),           &
+     CXPOL1(1:3*NX*NY*NZ),      &
+     CXPOL2(1:3*NX*NY*NZ),      &
+     CXZC(NX+1+MXPBC*(NX-1),    &
+          NY+1+MXPBC*(NY-1),    &
+          NZ+1+MXPBC*(NZ-1),6), &
+     CXZW(NX*NY*NZ,24)
+  complex(WP),intent(out),dimension(1:3*NX*NY*NZ) ::  & 
+                       CXESCA1,CXESCA2,CXBSCA1,CXBSCA2
+!-----------------------------------------------------------------------
+
+! Local variables
+  ! for storing the microscopic E field(s).
+  complex(WP),dimension(1:3*NX*NY*NZ) ::  CXESCA10,CXESCA20 
+
+  INTEGER :: IOBIN,J1,J2,J,JJ,JX,JY,JZ,K,NAT3,NXY,NXYZ
+
+  REAL(WP) :: DTIME,PHASYZ,PHASZ
+
+  REAL(WP) :: X(1:3)
+
+  COMPLEX(WP) ::  &
+     CXB01_TF(3), &
+     CXB02_TF(3)
+
+  COMPLEX(WP),ALLOCATABLE :: &
+     CXZG(:,:,:,:)
+
+  CHARACTER :: CMSGNM*70
+
+!***********************************************************************
+! Subroutine NEARFIELD
+! given
+!   NRWORD = length (bytes) of real word
+!          = 4 for single precision, 8 for double precision
+!   CMDFFT = FFT method
+!   CFLB1  = name of output file for nearfield B, for polarization state 1
+!   CFLB2  = name of output file for nearfield B, for polarization state 2
+!   CFLE1  = name of output file for nearfield E, for polarization state 1
+!   CFLE2  = name of output file for nearfield E, for polarization state 2
+!   MYID
+!   AKD        = k*d
+!   AK_TF(1:3)   = (k_x,k_y,k_z)*d in target frame
+!   IDVOUT     = unit to use for output (not used and removed by kong)
+!   IOCC(1:NAT)=0/1 if site is vacant/occupied
+!   ICOMP(1:3*NAT) = ICOMP(NAT,3)
+!              = composition identifier for sites 1-NAT, directions x,y,z
+!   MXCOMP     = dimensioning info for array CXEPS
+!   MXPBC      = dimensioning info
+!   NAT0       = number of occupied sites
+!   NCOMP      = number of distinct compositions
+!   NX,NY,NZ   = extent of lattice in x,y,z directions
+!   IPBC       = 0 to do isolated target
+!                1 to use periodic boundary conditions
+!                  in either y or z direction, or both y and z
+!   IORTH      = 1 if only doing a single polarization
+!                2 if doing two polarizations for each orientation
+!   NRFLDB     = 0 to omit calculation of B
+!                1 to use BSELF to compute B
+!   GAMMA      = convergence parameter used in PBC calculations
+!   NAMBIENT   = (real) refractive index of ambient medium
+!   PYD,PZD    = PBC period/d in y and z directions
+!   DX(1:3)    = lattice spacing in x,y,z directions/d
+!                d^3 = DX(1)*DX(2)*DX(3)
+!   X0(1:3)    = location/d in TF for (I,J,K)=(0,0,0)
+!   AEFF       = effective radius (phyical units) 
+!                of target or target unit cell
+!                aeff = (3*Volume/4*pi)^{1/3}
+!   WAVE       = wavelength in vacuo (physical units)
+!   CXADIA(1:3*NAT)=diagonal elements of polarizability tensor
+!                for dipoles at locations J=1-NAT
+!   CXEPS(1:MXCOMP)=complex dielectric function for compositions IC=1-MXCOMP
+!   CXPOL1(1:3*NAT)=polarization (in TF) at locations J=1-NAT
+!                produced by incident E polarization CXE01_TF
+!                propagating in direction AK_TF
+!   CXPOL2(1:3*NAT)=polarization (in TF) at locations J=1-NAT
+!                produced by incident E polarization CXE02_TF
+!                propagating in directin AK_TF [used only if IORTH=2]
+!   CXE01_TF(1:3)= incident polarization vector in TF
+!   CXE02_TF(1:3)= incident orthogonal polarization vector in TF
+!   CXZC       = work space needed by ESELF
+!   CXZW       = work space needed by ESELF
+
+! returns
+
+!   CXESCA1(1:3*NAT)=macroscopic electric field at lattice sites 1-NAT
+!                    generated by the polarization CXPOL1
+!   CXESCA2(1:3*NAT)=macroscopic electric field at lattice sites 1-NAT
+!                    generated by the polarization CXPOL2 [only if IORTH=2]
+!
+!   CXBSCA1(1:3*NAT)=macroscopic=microscopic magnetic field at 
+!                    lattice sites 1-NAT
+!                    generated by the polarization CXPOL1
+!                    [only if NRFLB=1]
+!   CXBSCA2(1:3*NAT)=macroscopic=microscopic magnetic field at
+!                    lattice sites 1-NAT
+!                    generated by the polarization CXPOL2 
+!                    [only if NRFLB=1 and IORTH=2]
+! and writes to file
+! if NRFLDB=0
+!      CFLE1  : P, E_inc, E_sca for incident polarization 1
+!      CFLE2                    for incident polarization 2 [only if IORTH=2]
+! or
+! if NRFLDB=1
+!      CFLEB1 : P, E_inc, E_sca, B_inc, B_sca for incident polarization 1 
+!      CFLEB2 :                               for incident polarization 2
+!                                             [only if IORTH=2]
+
+
+! history: created to perform nearfield calculations for version 7.2.1
+! 11.08.16 (BTD) v7.2.a
+!                * NEARFIELD cast into final form
+!                * diagnostic write statements disabled
+! 11.08.17 (BTD) * fixed bug
+! 11.08.18 (BTD) * add UNREDUCE(CXADIA...)
+! 11.08.30 (BTD) v7.2.b
+!                * add NAMBIENT to argument list
+!                * add NAMBIENT to WRITE(IDVOUT)....
+!                * change from FORM='UNFORMATTED' to ACCESS='STREAM'
+! 11.11.20 (BTD) v7.2.0
+!                * added missing NAMBIENT to write list when IORTH=2
+! 12.02.11 (BTD) v2
+!                * add NRWORD to argument list
+!                * reorder data in stored output
+!                  (more essential first, least essential last)
+!                * add AKD and CXE01_TF (or CXE02_TF) to stored output
+! 12.07.06 (BTD) v2 edited comments
+! 12.07.10 (BTD) v3 for DDSCAT 7.3
+!                changed notation CXE01R -> CXE01_TF, CXE02R -> CXE02_TF
+!                incorporated changes required to support use of
+!                subroutine BSELF written by Ian Wong
+!                * NRFLDB added to arg list
+!                * CFLB1,CFLB2 added to arg list
+!                * CXBSCA1,CXBSCA2 added to arg list
+! 12.07.12 (BTD) v4
+!                * additional changes
+! 12.08.02 (IYW) modified by Ian Y. Wong
+!                added DIPINT to arg list
+! 12.08.09 (IYW) v4 
+!                * added WRITE(IOBIN)ICOMP to output statements
+!                  when writing out B fields
+! 12.08.11 (BTD) v4 
+!                * removed DIPINT from argument list
+!                  IDIPINT is now passed to ESELF through module DDCOMMON_0
+! 12.12.23 (BTD) v5
+!                * added MXCOMP and CXEPS to argument list to allow
+!                  calculation of macroscopic E field within target
+! 12.12.25 (BTD) rewrite to consolidate E and B into single output file
+! 13.01.03 (BTD) v6
+!                * modified to *not* deallocate CXZG after first
+!                  call to BSELF if IORTH=2
+!                  This way BSELF can skip recomputation of Green function
+!                  coefficients when called for second polarization
+! 13.03.18 (BTD) v7
+!                * add CSTAMP and VERSNUM to argument list
+!                * write CSTAMP and VERSNUM to nearfield binary output
+! 13.03.25 (BTD) v8
+!                * remove CXEINC and CXBINC -- do not need to store these
+!                  because they are easily generated by DDPOSTPROCESS
+! end history
+! Copyright (C) 2011,2012,2013 B.T. Draine and P.J. Flatau
+! This code is covered by the GNU General Public License.
+!***********************************************************************
+
+  CALL TIMEIT('NEARFIELD',DTIME)
+
+  IOBIN=66
+  CXI=(0._WP,1._WP)
+  NXY=NX*NY
+  NXYZ=NXY*NZ
+  NAT3=3*NXYZ
+
+  CALL UNREDUCE(CXADIA,IOCC,3*NXYZ,NXYZ,NXYZ,NAT0)
+
+  CALL UNREDUCE(CXPOL1,IOCC,3*NXYZ,NXYZ,NXYZ,NAT0)
+
+  CALL ESELF(CMDFFT,CXPOL1,NX,NY,NZ,IPBC,GAMMA,PYD,PZD,AK_TF,AKD,DX, &
+             CXZC,CXZW,CXESCA1)
+  
+  CXESCA10 = CXESCA1 ! Store the microscopic E-field
+  
+  IF(NRFLDB==1)THEN
+
+! allocate CXZG = array that will contain Green function for computing B_sca
+!                 from P
+
+      ALLOCATE(CXZG(NX+1+IPBC*(NX-1),NY+1+IPBC*(NY-1),NZ+1+IPBC*(NZ-1),3))
+
+      CALL BSELF(CMDFFT,CXPOL1,NX,NY,NZ,IPBC,GAMMA,PYD,PZD,AK_TF,AKD,DX, &
+                    CXZG,CXZW,CXBSCA1)
+
+! If memory use is an issue, could deallocate CXZG and recalculate for IORTH=2
+! In present version, deallocate only if IORTH=1
+
+      IF(IORTH==1) DEALLOCATE(CXZG)
+  END IF
+
+! evaluate incident wave for incident polarization state 1
+
+! for adopted convention E02 = khat x E01
+! we have                B01 = khat x E01 = E02
+
+  DO K=1,3
+     CXB01_TF(K)=CXE02_TF(K)
+  END DO
+
+! have calculated *microscopic* E field CXESCA1
+! now convert to macroscopic E field
+! only changes are within the target material
+
+  DO JZ=1,NZ
+     DO JY=1,NY
+        DO JX=1,NX
+           J=JX+(JY-1)*NX+(JZ-1)*NXY
+           IF(IOCC(J)>0)THEN
+              DO K=1,3
+                 JJ=J+(K-1)*NXYZ
+                 CXFAC=3._WP/(2._WP+CXEPS(ICOMP(JJ))) 
+                 CXESCA1(JJ)=CXFAC*CXESCA1(JJ) ! Macro-E
+              END DO   ! enddo k=1,3
+           END IF   ! endif(iocc...)
+        END DO   ! enddo jx=1,nx
+     END DO   ! enddo jy=1,ny
+  END DO   ! enddo jz=1,nz
+
+!              >>>>> Important Note! <<<<<
+! The structure of the WRITE statements below *must* conform to the
+! structure of the corresponding READ statements in readnf.f90 
+! Any changes must be made in both modules.
+
+  IF(NRFLDB==0)THEN
+     OPEN(UNIT=IOBIN,FILE=CFLE1,ACCESS='STREAM')
+  ELSE
+     OPEN(UNIT=IOBIN,FILE=CFLEB1,ACCESS='STREAM')
+  END IF
+
+  WRITE(IOBIN)CSTAMP,VERSNUM
+  WRITE(IOBIN)NRWORD,NRFLDB,NXYZ,NAT0,NAT3,NCOMP,NX,NY,NZ,X0,AEFF, &
+              NAMBIENT,WAVE,AK_TF,CXE01_TF,CXB01_TF
+
+  WRITE(IOBIN)CXEPS(1:NCOMP)
+  WRITE(IOBIN)ICOMP(1:3*NXYZ)
+  WRITE(IOBIN)CXPOL1(1:3*NXYZ)
+  WRITE(IOBIN)CXESCA1(1:3*NXYZ)
+  WRITE(IOBIN)CXADIA(1:3*NXYZ)
+
+  IF(NRFLDB==1)THEN
+     WRITE(IOBIN)CXBSCA1(1:3*NXYZ)
+  END IF
+  CLOSE(IOBIN)
+
+  ! Write TDDA-input file, where the E-field is microscopic
+  if(nrfldb==0)then
+      call file4tdda(cflE1,nxyz,nat0,iocc,ixyz0,icomp,cxEsca10,cxPol1)
+  else
+      call file4tdda(cflEB1,nxyz,nat0,iocc,ixyz0,icomp,cxEsca10,cxPol1)
+      call ScatField(cflEB2,nx,ny,nz,cxEsca1,cxBsca1)
+  end if
+
+  IF(IORTH==2)THEN
+
+      CALL UNREDUCE(CXPOL2,IOCC,3*NXYZ,NXYZ,NXYZ,NAT0)
+
+      CALL ESELF(CMDFFT,CXPOL2,NX,NY,NZ,IPBC,GAMMA,PYD,PZD,AK_TF,AKD,DX, &
+                 CXZC,CXZW,CXESCA2)
+      
+      CXESCA20 = CXESCA2
+      IF(NRFLDB==1)THEN
+
+         CALL BSELF(CMDFFT,CXPOL2,NX,NY,NZ,IPBC,GAMMA,PYD,PZD,AK_TF,AKD,DX, &
+                    CXZG,CXZW,CXBSCA2)
+         DEALLOCATE(CXZG)
+      END IF
+
+! evaluate incident wave
+
+! for adopted convention E02 = khat x E01
+! we have                B02 = khat x E02 = khat x (khat x E01) = -E01
+      DO K=1,3
+         CXB02_TF(K)=-CXE01_TF(K)
+      END DO
+
+! have calculated *microscopic* E field CXESCA2
+! now convert to macroscopic E field
+! only changes are within the target material
+
+      DO JZ=1,NZ
+         DO JY=1,NY
+            DO JX=1,NX
+               J=JX+(JY-1)*NX+(JZ-1)*NXY
+               IF(IOCC(J)>0)THEN
+                  DO K=1,3
+                     JJ=J+(K-1)*NXYZ
+                     CXFAC=3._WP/(2._WP+CXEPS(ICOMP(JJ)))
+                     CXESCA2(JJ)=CXFAC*CXESCA2(JJ)
+                  END DO
+               END IF   ! endif(iocc...)
+            END DO   ! enddo jx=1,nx
+         END DO   ! enddo jy=1,ny
+      END DO   ! enddo jz=1,nz
+
+      IF(NRFLDB==0)THEN
+         OPEN(UNIT=IOBIN,FILE=CFLE2,ACCESS='STREAM')
+      ELSE
+         OPEN(UNIT=IOBIN,FILE=CFLEB2,ACCESS='STREAM')
+      ENDIF
+      WRITE(IOBIN)CSTAMP,VERSNUM
+      WRITE(IOBIN)NRWORD,NRFLDB,NXYZ,NAT0,NAT3,NCOMP,NX,NY,NZ,X0,AEFF, &
+                  NAMBIENT,WAVE,AK_TF,CXE02_TF,CXB02_TF
+      WRITE(IOBIN)CXEPS(1:NCOMP)
+      WRITE(IOBIN)ICOMP(1:3*NXYZ)
+      WRITE(IOBIN)CXPOL2(1:3*NXYZ)
+      WRITE(IOBIN)CXESCA2(1:3*NXYZ)
+      WRITE(IOBIN)CXADIA(1:3*NXYZ)
+      IF(NRFLDB==1)THEN
+         WRITE(IOBIN)CXBSCA2(1:3*NXYZ)
+      ENDIF
+      CLOSE(IOBIN)
+
+      ! Write TDDA-input formatted file, where the E-field is microscopic
+      if(nrfldb==0)then
+          call file4tdda(cflE2,nxyz,nat0,iocc,ixyz0,icomp,cxEsca20,cxPol2)
+      else
+          call file4tdda(cflEB2,nxyz,nat0,iocc,ixyz0,icomp,cxEsca20,cxPol2)
+          call ScatField(cflEB2,nx,ny,nz,cxEsca2,cxBsca2)
+      end if
+
+  END IF
+  CALL TIMEIT('NEARFIELD',DTIME)
+  END SUBROUTINE NEARFIELD
+
+  subroutine file4tdda(filename,nat,nat0,iocc,ixyz0,icomp,cxEsca,cxPol) 
+    use ddprecision, only: WP
+    use ddcommon_0,only: cflpar
+    implicit none
+    
+    character(len=15),intent(in) :: filename
+    integer,intent(in) :: nat,nat0 ! nat = nx*ny*nz
+    integer(2),intent(in),dimension(1:nat) :: iocc
+    integer(2),intent(in),dimension(1:3*nat) :: icomp
+    complex(WP),intent(in),dimension(1:3*nat) :: cxEsca, cxPol 
+    integer,intent(in),dimension(1:nat0,3) :: ixyz0
+   
+    integer :: mxnat,mxn3
+    integer :: it,it2 ! iteration number
+    real(WP),dimension(1:nat) :: Escxr,Escxi,Escyr,Escyi,Esczr,Esczi, &
+                             Pxr,Pxi,Pyr,Pyi,Pzr,Pzi
+    real(WP),dimension(1:3*nat) :: Escr,Esci,Polr,Poli
+
+    integer :: ix,iy,iz
+    real(WP),dimension(nat0) :: Einxr,Einxi,Einyr,Einyi,Einzr,Einzi
+    integer,dimension(3) :: shift
+        
+    open(unit=2345,file='Einc_'//filename(1:4)//'_'//cflpar,status='old',action='read')
+        do it2=1,nat0
+            read(2345,*) ix,iy,iz,Einxr(it2),Einxi(it2),Einyr(it2),Einyi(it2),Einzr(it2),Einzi(it2)
+        end do
+    close(2345)
+    
+    open(unit=2332,file='temp-shift.txt',status='old',action='read')
+        read(2332,*) shift
+    close(2332)
+    Escr = real(cxEsca)                    ;  Esci = aimag(cxEsca)
+    Polr = real(cxPol)                     ;  Poli = aimag(cxPol)
+    
+    Escxr = Escr(1:nat)                    ;  Escxi = Esci(1:nat)
+    Escyr = Escr(nat+1:2*nat)              ;  Escyi = Esci(nat+1:2*nat)
+    Esczr = Escr(2*nat+1:3*nat)            ;  Esczi = Esci(2*nat+1:3*nat)
+    
+    Pxr = Polr(1:nat)                      ;  Pxi = Poli(1:nat)
+    Pyr = Polr(nat+1:2*nat)                ;  Pyi = Poli(nat+1:2*nat)
+    Pzr = Polr(2*nat+1:3*nat)              ;  Pzi = Poli(2*nat+1:3*nat)
+
+    it = 1; it2=1 
+    open(unit=2334,file='tdda_input_'//filename(1:4)//'_'//CFLPAR,action='write',status='unknown')
+    do it = 1,nat
+        if (iocc(it)==1) then
+            write(2334,963) ixyz0(it2,1:3)-shift,icomp(it),     &
+                 Escxr(it)+Einxr(it2),Escxi(it)+Einxi(it2), &
+                 Escyr(it)+Einyr(it2),Escyi(it)+Einyi(it2), &
+                 Esczr(it)+Einzr(it2),Esczi(it)+Einzi(it2), &
+                 Pxr(it),Pxi(it),Pyr(it),Pyi(it),Pzr(it),Pzi(it)
+            it2=it2+1
+        end if
+    end do
+    close(unit=2334)
+  963  format(3i10,i3,12e15.6)
+  end subroutine file4tdda
+
+  subroutine ScatField(filename,nx,ny,nz,cxEsca,cxBsca) 
+    use ddprecision, only: WP
+    use ddcommon_0,only: cflpar
+    implicit none
+    
+    character(len=15),intent(in) :: filename
+    integer,intent(in) :: nx,ny,nz 
+    complex(WP),intent(in),dimension(1:3*nx*ny*nz) :: cxEsca, cxBsca 
+ 
+    complex(WP),dimension(nx*ny*nz) :: cxEscax,cxEscay,cxEscaz,cxBscax,cxBscay,cxBscaz
+    integer :: nat,it,itx,ity,itz,it1
+    integer,dimension(3) :: shift
+    integer,dimension(nx*ny*nz,3) :: ixyz    
+
+    nat=nx*ny*nz
+    open(unit=2332,file='temp-shift.txt',status='old',action='read')
+        read(2332,*) shift
+    close(2332)
+
+    ixyz=1 ! Initialization of coordinates.
+    do it1=1,ny*nz
+        do itx=1,nx
+            ixyz((it1-1)*nx+itx,1)= itx
+        end do
+    end do
+    do ity=1,ny
+        ixyz((ity-1)*nx+1:ity*nx,2) = ity
+    end do
+    do itz=2,nz
+        ixyz((itz-1)*nx*ny+1:itz*nx*ny,2) = ixyz(1:nx*ny,2)
+        ixyz((itz-1)*nx*ny+1:itz*nx*ny,3) = itz
+    end do
+    
+    cxEscax = cxEsca(1:nat)        ;    cxBscax = cxBsca(1:nat)
+    cxEscay = cxEsca(nat+1:2*nat)  ;    cxBscay = cxBsca(nat+1:2*nat)
+    cxEscaz = cxEsca(2*nat+1:3*nat);    cxBscaz = cxBsca(2*nat+1:3*nat)
+
+    open(unit=2334,file='EBsca_'//filename(1:4)//'_'//CFLPAR,action='write',status='unknown')
+    write(2334,961) 'Jx','Jy','Jz','Re(Esca_x)','Im(Esca_x)', &
+                                   'Re(Esca_y)','Im(Esca_y)', &
+                                   'Re(Esca_z)','Im(Esca_z)', &
+                                   'Re(Bsca_x)','Im(Bsca_x)', &
+                                   'Re(Bsca_y)','Im(Bsca_y)', &
+                                   'Re(Bsca_z)','Im(Bsca_z)'
+    do it = 1,nat
+        write(2334,962) ixyz(it,:)-shift,                 &
+                        cxEscax(it),cxEscay(it),cxEscaz(it), &
+                        cxBscax(it),cxBscay(it),cxBscaz(it)
+    end do
+    close(unit=2334)
+  961  format(3a10,12a15)
+  962  format(3i10,12e15.6)
+  end subroutine ScatField
