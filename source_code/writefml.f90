@@ -230,7 +230,11 @@
         5X,'m=1 in scatt. plane, m=2 perp to scatt. plane',/,/,            &
         ' alpha   phi',2X,'Re(f_11)',3X,'Im(f_11)',3X,'Re(f_21)',3X,       &
         'Im(f_21)',3X,'Re(f_12)',3X,'Im(f_12)',3X,'Re(f_22)',3X,'Im(f_22)')
-9070  FORMAT(2F6.1,1P,4E11.3)
-9071  FORMAT(2F6.1,1P,8E11.3)
+! 9070  FORMAT(2F6.1,3X, 1P,4E11.3)
+9070  FORMAT(F6.1,3X, F6.1, 3X, 1P,4E11.3)
+
+! 9071  FORMAT(2F6.1,3X, 1P,8E11.3)
+9071  FORMAT(F6.1,3X, F6.1, 3X, 1P,8E11.3)
+
 
     END SUBROUTINE WRITEFML
