@@ -1,0 +1,14 @@
+# Jupyter notebooks
+.ipynb_checkpoints
+
+# emacs back-up files
+.#*
+.*~
+
+# Mac OS
+.DS_Store
+
+# Python
+__pycache__
+
+

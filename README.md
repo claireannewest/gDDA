@@ -1,11 +1,12 @@
-# Gaussian beam discrete dipole approximation
-The following code is Draine's DDA version 7.3.2 edited to contain a Gaussian beam excitation source.
+# Discrete Dipole Approximation with Gaussian Beam Source
+The following code is Draine's DDA version 7.3.2 edited to contain a Gaussian beam excitation source. Draine's User-Guide is included in the repo, but note that the certain changes have been made (e.g., lines added in `ddscat.par`) to the code which will make this user guide not applicable in certain cases. See the changes outlined below. 
 
 ## Set up
-Compile the code in the folder `source_code` by typing `make all`.
+Make sure you have Fortran compilers installed. Once installed, Compile the source code in the folder `source_code` by typing `make all`. This has been done correctly when the file `ddscat` has been created.
+
 
 ## Examples
-The folder `example_sphere` contains example scripts to run 1) a calculation of the light scattered by a nanosphere and 2) an entire spectrum. 
+The folder `example_sphere` contains example scripts to run calculation(s) of the light scattered by a nanosphere.
 
 ### A single scattering calculation
 To run a single scattering calculation, see the template files in the folder `single_calculation`.
