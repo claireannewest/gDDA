@@ -11,7 +11,8 @@ The folder `example_sphere` contains example scripts to run calculation(s) of th
 ### A single scattering calculation
 To run a single scattering calculation, see the template files in the folder `single_calculation`.
 * Step 1: Create input files.
-The file `make_sphere.py` will create a shape file of a nanosphere. To make the shape file, run `python make_sphere.py -w -l <lattice spacing> -r <radius in nm>`. This will create the file `shape.dat` which will be compatible with DDSCAT. To verify your shape, you can plot the shape via `python make_sphere.py -p` which will plot the shape file.
+The file `make_sphere.py` will create a shape file of a nanosphere. This will create the file `shape.dat` which will be compatible with DDA.
+
 * Step 2: Create parameter files.
 Edit the file `ddscat.par` according to the normal methods defined in Draine's User Guide. The only modifications are to lines 28 - 31, which specify the Gaussian beam parameters.
 * Step 3: Run the script.
@@ -20,8 +21,8 @@ To run the script, type `bash run_gdda.sh`. For a 5 nm radius sphere of 1 nm dip
 
 ### An entire spectrum
 To run many scattering calculations to form an entire spectrum, see the Jupyter notebook and corresponding template files in the folder `calculate_a_spectrum`.
-* Step 1: Follow steps 1 and 2 from previous example.
-* Step 2: Follow instructions in Jupyter notebook.
+* Step 1: Follow Jupyter Notebook.
+
 
 
 ### A spectrum on supercomputer
